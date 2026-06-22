@@ -119,8 +119,12 @@ def test_functions(expression: str, expected: float) -> None:
         ("tan(45)", "deg", 1.0),
     ],
 )
-def test_trigonometry_angle_mode(expression: str, angle_mode: str, expected: float) -> None:
-    assert calculator(expression, angle_mode=angle_mode) == pytest.approx(expected, rel=1e-9)
+def test_trigonometry_angle_mode(
+    expression: str, angle_mode: str, expected: float
+) -> None:
+    assert calculator(expression, angle_mode=angle_mode) == pytest.approx(
+        expected, rel=1e-9
+    )
 
 
 @pytest.mark.parametrize(
@@ -168,9 +172,13 @@ def test_number_formats(expression: str, expected: float) -> None:
         ("pi + x", {"pi": 100, "x": 1}, math.pi + 1),
     ],
 )
-def test_variables_and_assignment(expression: str, variables: dict[str, float], expected: float) -> None:
+def test_variables_and_assignment(
+    expression: str, variables: dict[str, float], expected: float
+) -> None:
     original = dict(variables)
-    assert calculator(expression, variables=variables) == pytest.approx(expected, rel=1e-9)
+    assert calculator(expression, variables=variables) == pytest.approx(
+        expected, rel=1e-9
+    )
     assert variables == original
 
 
@@ -184,7 +192,9 @@ def test_variables_and_assignment(expression: str, variables: dict[str, float], 
     ],
 )
 def test_precision(expression: str, precision: int | None, expected: float) -> None:
-    assert calculator(expression, precision=precision) == pytest.approx(expected, rel=1e-9)
+    assert calculator(expression, precision=precision) == pytest.approx(
+        expected, rel=1e-9
+    )
 
 
 @pytest.mark.parametrize(
@@ -220,6 +230,8 @@ def test_long_and_composite_expressions(expression: str, expected: float) -> Non
         ("inf - inf", EvaluationError, "not a number"),
     ],
 )
-def test_errors(expression: str, exception_type: type[BaseException], message: str) -> None:
+def test_errors(
+    expression: str, exception_type: type[BaseException], message: str
+) -> None:
     with pytest.raises(exception_type, match=message):
         calculator(expression)

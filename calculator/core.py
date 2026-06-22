@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import math
-from typing import Literal, Mapping, Optional, Union
+from collections.abc import Mapping
+from typing import Literal, Optional, Union
 
 from .evaluator import Evaluator
 from .parser import Parser

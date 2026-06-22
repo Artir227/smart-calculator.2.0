@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Callable, Dict, List, Tuple
 
 from .exceptions import EvaluationError, ParseError

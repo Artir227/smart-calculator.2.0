@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Dict, Mapping, Optional, Union
+from collections.abc import Mapping
+from typing import Dict, Optional, Union
 
 from .ast_nodes import (
-    ASTNode,
     AssignmentNode,
+    ASTNode,
     BinaryOpNode,
     FunctionCallNode,
     NumberNode,

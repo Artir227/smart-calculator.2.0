@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import List
 
 from .ast_nodes import (
-    ASTNode,
     AssignmentNode,
+    ASTNode,
     BinaryOpNode,
     FunctionCallNode,
     NumberNode,
@@ -139,9 +139,11 @@ class Parser:
             return False
         next_token = self._peek_next()
         # If the next token can start an operand, percent is binary modulo.
-        if next_token.type in {TokenType.NUMBER, TokenType.IDENTIFIER, TokenType.LPAREN}:
-            return False
-        return True
+        return next_token.type not in {
+            TokenType.NUMBER,
+            TokenType.IDENTIFIER,
+            TokenType.LPAREN,
+        }
 
     def _match_operator(self, *operators: str) -> bool:
         if self._peek().type == TokenType.OPERATOR and self._peek().value in operators:
