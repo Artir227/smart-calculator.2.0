@@ -1,13 +1,13 @@
-"""Public API for the calculator package."""
+"""Production-ready mathematical expression calculator."""
 
 from .core import Calculator, calculator
 from .exceptions import CalculatorError, EvaluationError, ParseError, TokenizeError
 
 __all__ = [
     "Calculator",
-    "calculator",
     "CalculatorError",
-    "TokenizeError",
-    "ParseError",
     "EvaluationError",
+    "ParseError",
+    "TokenizeError",
+    "calculator",
 ]

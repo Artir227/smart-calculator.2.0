@@ -1,113 +1,88 @@
-"""AST evaluator for the calculator package."""
+"""AST evaluator for calculator expressions."""
 
 from __future__ import annotations
 
 import logging
 import math
-from typing import Dict, Mapping, Optional, Union
+from collections.abc import Mapping
 
 from .ast_nodes import (
-    ASTNode,
     AssignmentNode,
     BinaryOpNode,
     FunctionCallNode,
+    Node,
     NumberNode,
-    PercentNode,
-    ProgramNode,
     UnaryOpNode,
     VariableNode,
 )
 from .constants import CONSTANTS
 from .exceptions import EvaluationError
-from .functions import FUNCTIONS
+from .functions import FUNCTIONS, Number
 
-Number = Union[int, float]
 LOGGER = logging.getLogger(__name__)
 
 
 class Evaluator:
-    """Evaluates AST nodes in a local variable context."""
+    """Evaluates AST statements using a local variable context."""
 
     def __init__(
         self,
         *,
-        variables: Optional[Mapping[str, Number]] = None,
+        variables: Mapping[str, float | int] | None = None,
         angle_mode: str = "rad",
         verbose: bool = False,
     ) -> None:
-        if angle_mode not in {"rad", "deg"}:
-            raise ValueError("angle_mode must be 'rad' or 'deg'")
-        self.context: Dict[str, float] = {
-            key: float(value) for key, value in (variables or {}).items()
-        }
+        self.variables: dict[str, Number] = dict(variables or {})
         self.angle_mode = angle_mode
         self.verbose = verbose
 
-    def evaluate(self, node: ASTNode) -> float:
-        result = self._eval(node)
-        self._validate_number(result)
+    def evaluate_program(self, statements: list[Node]) -> Number:
+        result: Number = 0
+        for statement in statements:
+            result = self.evaluate(statement)
         return result
 
-    def _eval(self, node: ASTNode) -> float:
-        if isinstance(node, ProgramNode):
-            return self._program(node)
+    def evaluate(self, node: Node) -> Number:
         if isinstance(node, NumberNode):
             return node.value
         if isinstance(node, VariableNode):
-            return self._variable(node)
+            return self._evaluate_variable(node)
         if isinstance(node, UnaryOpNode):
-            return self._unary(node)
-        if isinstance(node, PercentNode):
-            return self._percent(node)
+            return self._evaluate_unary(node)
         if isinstance(node, BinaryOpNode):
-            return self._binary(node)
+            return self._evaluate_binary(node)
         if isinstance(node, FunctionCallNode):
-            return self._function(node)
+            return self._evaluate_function(node)
         if isinstance(node, AssignmentNode):
-            return self._assignment(node)
-        raise EvaluationError(f"unsupported AST node {type(node).__name__}")
+            value = self.evaluate(node.value)
+            self.variables[node.name] = value
+            self._log("assign %s = %s", node.name, value)
+            return value
+        raise EvaluationError(f"unsupported node {type(node).__name__}")
 
-    def _program(self, node: ProgramNode) -> float:
-        if not node.statements:
-            raise EvaluationError("empty program")
-        result = 0.0
-        for statement in node.statements:
-            result = self._eval(statement)
-        return result
-
-    def _variable(self, node: VariableNode) -> float:
+    def _evaluate_variable(self, node: VariableNode) -> Number:
         if node.name in CONSTANTS:
             return CONSTANTS[node.name]
-        if node.name not in self.context:
-            raise EvaluationError(f"unknown variable {node.name!r}")
-        return self.context[node.name]
+        if node.name in self.variables:
+            return self.variables[node.name]
+        raise EvaluationError(f"unknown variable {node.name!r}")
 
-    def _assignment(self, node: AssignmentNode) -> float:
-        value = self._eval(node.expression)
-        self.context[node.name] = value
-        self._log("assign %s = %s", node.name, value)
-        return value
-
-    def _unary(self, node: UnaryOpNode) -> float:
-        operand = self._eval(node.operand)
+    def _evaluate_unary(self, node: UnaryOpNode) -> Number:
+        operand = self.evaluate(node.operand)
         if node.operator == "+":
             result = +operand
         elif node.operator == "-":
             result = -operand
+        elif node.operator == "%":
+            result = operand / 100
         else:
-            raise EvaluationError(f"unsupported unary operator {node.operator!r}")
+            raise EvaluationError(f"unknown unary operator {node.operator!r}")
         self._log("%s%s -> %s", node.operator, operand, result)
         return result
 
-    def _percent(self, node: PercentNode) -> float:
-        operand = self._eval(node.operand)
-        result = operand / 100.0
-        self._log("%s%% -> %s", operand, result)
-        return result
-
-    def _binary(self, node: BinaryOpNode) -> float:
-        left = self._eval(node.left)
-        right = self._eval(node.right)
+    def _evaluate_binary(self, node: BinaryOpNode) -> Number:
+        left = self.evaluate(node.left)
+        right = self.evaluate(node.right)
         operator = node.operator
         if operator == "+":
             result = left + right
@@ -128,32 +103,27 @@ class Evaluator:
                 raise ZeroDivisionError("division by zero")
             result = left % right
         elif operator == "**":
-            try:
-                result = left**right
-            except (OverflowError, ValueError) as exc:
-                raise EvaluationError(str(exc)) from exc
+            result = left**right
         else:
-            raise EvaluationError(f"unsupported binary operator {operator!r}")
-        self._validate_number(result)
+            raise EvaluationError(f"unknown operator {operator!r}")
+        self._ensure_not_nan(result)
         self._log("%s %s %s -> %s", left, operator, right, result)
-        return float(result)
+        return result
 
-    def _function(self, node: FunctionCallNode) -> float:
+    def _evaluate_function(self, node: FunctionCallNode) -> Number:
         if node.name not in FUNCTIONS:
             raise EvaluationError(f"unknown function {node.name!r}")
-        args = [self._eval(argument) for argument in node.args]
-        try:
-            result = FUNCTIONS[node.name](args, self.angle_mode)
-        except ValueError as exc:
-            raise EvaluationError(str(exc)) from exc
-        self._validate_number(result)
+        args = [self.evaluate(arg) for arg in node.args]
+        result = FUNCTIONS[node.name](args, self.angle_mode)
+        self._ensure_not_nan(result)
         self._log("%s(%s) -> %s", node.name, ", ".join(map(str, args)), result)
-        return float(result)
-
-    def _validate_number(self, value: float) -> None:
-        if math.isnan(value):
-            raise EvaluationError("result is not a number")
+        return result
 
     def _log(self, message: str, *args: object) -> None:
         if self.verbose:
             LOGGER.info(message, *args)
+
+    @staticmethod
+    def _ensure_not_nan(value: Number) -> None:
+        if isinstance(value, float) and math.isnan(value):
+            raise EvaluationError("result is NaN")

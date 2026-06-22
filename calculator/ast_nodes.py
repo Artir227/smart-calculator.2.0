@@ -1,55 +1,45 @@
-"""AST node definitions used by the parser and evaluator."""
+"""AST nodes used by the recursive-descent parser."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List
 
 
-class ASTNode:
-    """Base class for AST nodes."""
+@dataclass(frozen=True, slots=True)
+class Node:
+    """Base AST node."""
 
 
-@dataclass(frozen=True)
-class NumberNode(ASTNode):
-    value: float
+@dataclass(frozen=True, slots=True)
+class NumberNode(Node):
+    value: float | int
 
 
-@dataclass(frozen=True)
-class VariableNode(ASTNode):
+@dataclass(frozen=True, slots=True)
+class VariableNode(Node):
     name: str
 
 
-@dataclass(frozen=True)
-class UnaryOpNode(ASTNode):
+@dataclass(frozen=True, slots=True)
+class UnaryOpNode(Node):
     operator: str
-    operand: ASTNode
+    operand: Node
 
 
-@dataclass(frozen=True)
-class BinaryOpNode(ASTNode):
+@dataclass(frozen=True, slots=True)
+class BinaryOpNode(Node):
     operator: str
-    left: ASTNode
-    right: ASTNode
+    left: Node
+    right: Node
 
 
-@dataclass(frozen=True)
-class PercentNode(ASTNode):
-    operand: ASTNode
-
-
-@dataclass(frozen=True)
-class FunctionCallNode(ASTNode):
+@dataclass(frozen=True, slots=True)
+class FunctionCallNode(Node):
     name: str
-    args: List[ASTNode]
+    args: list[Node]
 
 
-@dataclass(frozen=True)
-class AssignmentNode(ASTNode):
+@dataclass(frozen=True, slots=True)
+class AssignmentNode(Node):
     name: str
-    expression: ASTNode
-
-
-@dataclass(frozen=True)
-class ProgramNode(ASTNode):
-    statements: List[ASTNode]
+    value: Node

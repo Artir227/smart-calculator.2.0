@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
-from typing import List
-
 from .ast_nodes import (
-    ASTNode,
     AssignmentNode,
     BinaryOpNode,
     FunctionCallNode,
+    Node,
     NumberNode,
-    PercentNode,
-    ProgramNode,
     UnaryOpNode,
     VariableNode,
 )
@@ -20,158 +16,150 @@ from .tokenizer import Token, TokenType
 
 
 class Parser:
-    """Parses tokens into an abstract syntax tree."""
+    """Builds AST statements from tokens."""
 
-    def __init__(self, tokens: List[Token]) -> None:
+    def __init__(self, tokens: list[Token]) -> None:
         self.tokens = tokens
-        self.current = 0
+        self.position = 0
 
-    def parse(self) -> ProgramNode:
-        statements: List[ASTNode] = []
-        if self._peek().type == TokenType.EOF:
-            raise ValueError("empty expression")
-
-        while self._peek().type != TokenType.EOF:
-            if self._peek().type == TokenType.SEMICOLON:
-                raise ParseError("empty statement")
-            statements.append(self._statement())
+    def parse_program(self) -> list[Node]:
+        statements: list[Node] = []
+        if self._current().type == TokenType.EOF:
+            raise ParseError("empty expression")
+        while self._current().type != TokenType.EOF:
+            if self._current().type == TokenType.SEMICOLON:
+                position = self._current().position
+                raise ParseError(f"empty statement at position {position}")
+            statements.append(self._parse_statement())
             if self._match(TokenType.SEMICOLON):
-                if self._peek().type == TokenType.EOF:
+                if self._current().type == TokenType.EOF:
                     break
                 continue
-            if self._peek().type != TokenType.EOF:
-                token = self._peek()
+            if self._current().type != TokenType.EOF:
                 raise ParseError(
-                    f"unexpected token {token.value!r} at position {token.position}"
+                    f"unexpected token {self._current().value!r} "
+                    f"at position {self._current().position}"
                 )
+        return statements
 
-        return ProgramNode(statements)
-
-    def _statement(self) -> ASTNode:
+    def _parse_statement(self) -> Node:
         if (
-            self._peek().type == TokenType.IDENTIFIER
-            and self._peek_next().type == TokenType.ASSIGN
+            self._current().type == TokenType.IDENTIFIER
+            and self._peek().type == TokenType.ASSIGN
         ):
             name = self._advance().value
             self._advance()
-            if name in {"pi", "e", "tau", "inf"}:
-                raise ParseError(f"cannot assign to constant {name!r}")
-            return AssignmentNode(name, self._expression())
-        return self._expression()
+            return AssignmentNode(name, self._parse_expression())
+        return self._parse_expression()
 
-    def _expression(self) -> ASTNode:
-        node = self._term()
-        while self._match_operator("+", "-"):
-            operator = self._previous().value
-            right = self._term()
-            node = BinaryOpNode(operator, node, right)
+    def _parse_expression(self) -> Node:
+        return self._parse_additive()
+
+    def _parse_additive(self) -> Node:
+        node = self._parse_multiplicative()
+        while self._current().type == TokenType.OPERATOR and self._current().value in {
+            "+",
+            "-",
+        }:
+            operator = self._advance().value
+            node = BinaryOpNode(operator, node, self._parse_multiplicative())
         return node
 
-    def _term(self) -> ASTNode:
-        node = self._unary()
-        while self._match_operator("*", "/", "//", "%"):
-            operator = self._previous().value
-            right = self._unary()
-            node = BinaryOpNode(operator, node, right)
+    def _parse_multiplicative(self) -> Node:
+        node = self._parse_unary()
+        while self._current().type == TokenType.OPERATOR and self._current().value in {
+            "*",
+            "/",
+            "//",
+            "%",
+        }:
+            operator = self._advance().value
+            node = BinaryOpNode(operator, node, self._parse_unary())
         return node
 
-    def _unary(self) -> ASTNode:
-        if self._match_operator("+", "-"):
-            operator = self._previous().value
-            return UnaryOpNode(operator, self._unary())
-        return self._power()
+    def _parse_unary(self) -> Node:
+        if self._current().type == TokenType.OPERATOR and self._current().value in {
+            "+",
+            "-",
+        }:
+            operator = self._advance().value
+            return UnaryOpNode(operator, self._parse_unary())
+        return self._parse_power()
 
-    def _power(self) -> ASTNode:
-        node = self._postfix()
-        if self._match_operator("**"):
-            right = self._unary()
-            node = BinaryOpNode("**", node, right)
+    def _parse_power(self) -> Node:
+        node = self._parse_postfix()
+        if self._current().type == TokenType.OPERATOR and self._current().value == "**":
+            operator = self._advance().value
+            node = BinaryOpNode(operator, node, self._parse_unary())
         return node
 
-    def _postfix(self) -> ASTNode:
-        node = self._primary()
-        while self._is_unary_percent():
+    def _parse_postfix(self) -> Node:
+        node = self._parse_primary()
+        while (
+            self._current().type == TokenType.OPERATOR
+            and self._current().value == "%"
+            and not self._is_operand_start(self._peek())
+        ):
             self._advance()
-            node = PercentNode(node)
+            node = UnaryOpNode("%", node)
         return node
 
-    def _primary(self) -> ASTNode:
-        if self._match(TokenType.NUMBER):
-            raw = self._previous().value.replace("_", "")
-            try:
-                return NumberNode(float(raw))
-            except ValueError as exc:
-                raise ParseError(f"invalid number {self._previous().value!r}") from exc
-
-        if self._match(TokenType.IDENTIFIER):
-            name = self._previous().value
-            if self._match(TokenType.LPAREN):
-                args = self._argument_list(name)
-                self._consume(TokenType.RPAREN, "unbalanced parentheses")
-                return FunctionCallNode(name, args)
-            return VariableNode(name)
-
-        if self._match(TokenType.LPAREN):
-            node = self._expression()
-            self._consume(TokenType.RPAREN, "unbalanced parentheses")
+    def _parse_primary(self) -> Node:
+        token = self._current()
+        if token.type == TokenType.NUMBER:
+            self._advance()
+            return NumberNode(self._number_value(token.value))
+        if token.type == TokenType.IDENTIFIER:
+            return self._parse_identifier_or_function()
+        if token.type == TokenType.LPAREN:
+            self._advance()
+            node = self._parse_expression()
+            if not self._match(TokenType.RPAREN):
+                raise ParseError("unbalanced parentheses")
             return node
-
-        token = self._peek()
-        if token.type == TokenType.RPAREN:
-            raise ParseError("unbalanced parentheses")
-        raise ParseError(f"expected expression at position {token.position}")
-
-    def _argument_list(self, function_name: str) -> List[ASTNode]:
-        if self._peek().type == TokenType.RPAREN:
-            if function_name in {"min", "max"}:
-                raise ParseError(f"{function_name}() takes at least 1 argument, got 0")
-            return []
-
-        args = [self._expression()]
-        while self._match(TokenType.COMMA):
-            if self._peek().type == TokenType.RPAREN:
-                raise ParseError("expected expression after comma")
-            args.append(self._expression())
-        return args
-
-    def _is_unary_percent(self) -> bool:
-        if not (self._peek().type == TokenType.OPERATOR and self._peek().value == "%"):
-            return False
-        next_token = self._peek_next()
-        # If the next token can start an operand, percent is binary modulo.
-        if next_token.type in {TokenType.NUMBER, TokenType.IDENTIFIER, TokenType.LPAREN}:
-            return False
-        return True
-
-    def _match_operator(self, *operators: str) -> bool:
-        if self._peek().type == TokenType.OPERATOR and self._peek().value in operators:
-            self._advance()
-            return True
-        return False
-
-    def _match(self, token_type: TokenType) -> bool:
-        if self._peek().type == token_type:
-            self._advance()
-            return True
-        return False
-
-    def _consume(self, token_type: TokenType, message: str) -> Token:
-        if self._peek().type == token_type:
-            return self._advance()
+        message = f"unexpected token {token.value!r} at position {token.position}"
         raise ParseError(message)
 
-    def _advance(self) -> Token:
-        if self._peek().type != TokenType.EOF:
-            self.current += 1
-        return self._previous()
+    def _parse_identifier_or_function(self) -> Node:
+        name_token = self._advance()
+        if self._match(TokenType.LPAREN):
+            args: list[Node] = []
+            if self._current().type != TokenType.RPAREN:
+                while True:
+                    args.append(self._parse_expression())
+                    if not self._match(TokenType.COMMA):
+                        break
+            if not self._match(TokenType.RPAREN):
+                raise ParseError("unbalanced parentheses")
+            return FunctionCallNode(name_token.value, args)
+        return VariableNode(name_token.value)
+
+    def _current(self) -> Token:
+        return self.tokens[self.position]
 
     def _peek(self) -> Token:
-        return self.tokens[self.current]
-
-    def _peek_next(self) -> Token:
-        if self.current + 1 >= len(self.tokens):
+        if self.position + 1 >= len(self.tokens):
             return self.tokens[-1]
-        return self.tokens[self.current + 1]
+        return self.tokens[self.position + 1]
 
-    def _previous(self) -> Token:
-        return self.tokens[self.current - 1]
+    def _advance(self) -> Token:
+        token = self._current()
+        self.position += 1
+        return token
+
+    def _match(self, token_type: TokenType) -> bool:
+        if self._current().type == token_type:
+            self._advance()
+            return True
+        return False
+
+    @staticmethod
+    def _number_value(value: str) -> float | int:
+        numeric = float(value)
+        if numeric.is_integer() and "." not in value and "e" not in value.lower():
+            return int(value.replace("_", ""))
+        return numeric
+
+    @staticmethod
+    def _is_operand_start(token: Token) -> bool:
+        return token.type in {TokenType.NUMBER, TokenType.IDENTIFIER, TokenType.LPAREN}
