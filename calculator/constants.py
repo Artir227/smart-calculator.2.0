@@ -1,10 +1,9 @@
 """Built-in mathematical constants."""
 
-from __future__ import annotations
-
 import math
+from typing import Dict
 
-CONSTANTS: dict[str, float] = {
+CONSTANTS: Dict[str, float] = {
     "pi": math.pi,
     "e": math.e,
     "tau": math.tau,

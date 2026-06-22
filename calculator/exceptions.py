@@ -1,8 +1,8 @@
-"""Calculator exception hierarchy."""
+"""Exception hierarchy for the calculator package."""
 
 
 class CalculatorError(Exception):
-    """Base class for all calculator-specific errors."""
+    """Base class for calculator-specific errors."""
 
 
 class TokenizeError(CalculatorError):
@@ -10,8 +10,8 @@ class TokenizeError(CalculatorError):
 
 
 class ParseError(CalculatorError):
-    """Raised when tokens do not form a valid expression."""
+    """Raised when an expression has invalid syntax."""
 
 
 class EvaluationError(CalculatorError):
-    """Raised when a valid expression cannot be evaluated."""
+    """Raised when a syntactically valid expression cannot be evaluated."""

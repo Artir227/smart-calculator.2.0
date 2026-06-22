@@ -1,139 +1,144 @@
-"""Safe mathematical function registry."""
+"""Registry of safe mathematical functions supported by the calculator."""
 
 from __future__ import annotations
 
 import math
-from collections.abc import Callable
 from decimal import Decimal, ROUND_HALF_UP
+from typing import Callable, Dict, List, Tuple
 
 from .exceptions import EvaluationError, ParseError
 
-Number = float | int
-Function = Callable[[list[Number], str], Number]
+MathFunction = Callable[[List[float], str], float]
 
 
-def _require_arity(name: str, args: list[Number], arity: int) -> None:
-    if len(args) != arity:
-        raise ParseError(f"{name}() takes {arity} argument, got {len(args)}")
+def _require_arity(name: str, args: List[float], expected: int) -> None:
+    if len(args) != expected:
+        raise ParseError(f"{name}() takes {expected} argument, got {len(args)}")
 
 
-def _require_min_arity(name: str, args: list[Number], arity: int) -> None:
-    if len(args) < arity:
-        raise ParseError(f"{name}() takes at least {arity} argument, got {len(args)}")
+def _to_angle(value: float, angle_mode: str) -> float:
+    return math.radians(value) if angle_mode == "deg" else value
 
 
-def _round_half_up(value: Number) -> int:
-    return int(Decimal(str(value)).to_integral_value(rounding=ROUND_HALF_UP))
+def _round_half_up(value: float) -> float:
+    return float(Decimal(str(value)).to_integral_value(rounding=ROUND_HALF_UP))
 
 
-def _sqrt(args: list[Number], _angle_mode: str) -> Number:
+def _one_arg(name: str, fn: Callable[[float], float]) -> MathFunction:
+    def wrapped(args: List[float], angle_mode: str) -> float:
+        del angle_mode
+        _require_arity(name, args, 1)
+        return float(fn(args[0]))
+
+    return wrapped
+
+
+def _sqrt(args: List[float], angle_mode: str) -> float:
+    del angle_mode
     _require_arity("sqrt", args, 1)
     if args[0] < 0:
         raise EvaluationError("cannot take sqrt of negative number")
     return math.sqrt(args[0])
 
 
-def _abs(args: list[Number], _angle_mode: str) -> Number:
-    _require_arity("abs", args, 1)
-    return abs(args[0])
+def _log(name: str, fn: Callable[[float], float]) -> MathFunction:
+    def wrapped(args: List[float], angle_mode: str) -> float:
+        del angle_mode
+        _require_arity(name, args, 1)
+        if args[0] <= 0:
+            raise EvaluationError(f"{name}() domain error")
+        return float(fn(args[0]))
+
+    return wrapped
 
 
-def _pow(args: list[Number], _angle_mode: str) -> Number:
+def _pow(args: List[float], angle_mode: str) -> float:
+    del angle_mode
     _require_arity("pow", args, 2)
-    return args[0] ** args[1]
+    return float(math.pow(args[0], args[1]))
 
 
-def _min(args: list[Number], _angle_mode: str) -> Number:
-    _require_min_arity("min", args, 1)
+def _min(args: List[float], angle_mode: str) -> float:
+    del angle_mode
+    if not args:
+        raise ParseError("min() takes at least 1 argument, got 0")
     return min(args)
 
 
-def _max(args: list[Number], _angle_mode: str) -> Number:
-    _require_min_arity("max", args, 1)
+def _max(args: List[float], angle_mode: str) -> float:
+    del angle_mode
+    if not args:
+        raise ParseError("max() takes at least 1 argument, got 0")
     return max(args)
 
 
-def _floor(args: list[Number], _angle_mode: str) -> Number:
-    _require_arity("floor", args, 1)
-    return math.floor(args[0])
-
-
-def _ceil(args: list[Number], _angle_mode: str) -> Number:
-    _require_arity("ceil", args, 1)
-    return math.ceil(args[0])
-
-
-def _round(args: list[Number], _angle_mode: str) -> Number:
+def _round(args: List[float], angle_mode: str) -> float:
+    del angle_mode
     _require_arity("round", args, 1)
     return _round_half_up(args[0])
 
 
-def _log(args: list[Number], _angle_mode: str) -> Number:
-    _require_arity("log", args, 1)
-    if args[0] <= 0:
-        raise EvaluationError("log is defined only for positive numbers")
-    return math.log(args[0])
-
-
-def _log10(args: list[Number], _angle_mode: str) -> Number:
-    _require_arity("log10", args, 1)
-    if args[0] <= 0:
-        raise EvaluationError("log10 is defined only for positive numbers")
-    return math.log10(args[0])
-
-
-def _exp(args: list[Number], _angle_mode: str) -> Number:
-    _require_arity("exp", args, 1)
-    return math.exp(args[0])
-
-
-def _to_radians(value: Number, angle_mode: str) -> float:
-    if angle_mode == "deg":
-        return math.radians(value)
-    return float(value)
-
-
-def _sin(args: list[Number], angle_mode: str) -> Number:
+def _sin(args: List[float], angle_mode: str) -> float:
     _require_arity("sin", args, 1)
-    return math.sin(_to_radians(args[0], angle_mode))
+    return math.sin(_to_angle(args[0], angle_mode))
 
 
-def _cos(args: list[Number], angle_mode: str) -> Number:
+def _cos(args: List[float], angle_mode: str) -> float:
     _require_arity("cos", args, 1)
-    return math.cos(_to_radians(args[0], angle_mode))
+    return math.cos(_to_angle(args[0], angle_mode))
 
 
-def _tan(args: list[Number], angle_mode: str) -> Number:
+def _tan(args: List[float], angle_mode: str) -> float:
     _require_arity("tan", args, 1)
-    return math.tan(_to_radians(args[0], angle_mode))
+    return math.tan(_to_angle(args[0], angle_mode))
 
 
-def _factorial(args: list[Number], _angle_mode: str) -> Number:
+def _factorial(args: List[float], angle_mode: str) -> float:
+    del angle_mode
     _require_arity("factorial", args, 1)
     value = args[0]
-    if isinstance(value, float) and not value.is_integer():
+    if not math.isfinite(value) or not value.is_integer() or value < 0:
         raise EvaluationError("factorial requires non-negative integer")
     integer_value = int(value)
-    if integer_value < 0:
-        raise EvaluationError("factorial requires non-negative integer")
-    return math.factorial(integer_value)
+    if integer_value > 10000:
+        raise EvaluationError("factorial argument is too large")
+    return float(math.factorial(integer_value))
 
 
-FUNCTIONS: dict[str, Function] = {
+FUNCTIONS: Dict[str, MathFunction] = {
     "sqrt": _sqrt,
-    "abs": _abs,
+    "abs": _one_arg("abs", abs),
     "pow": _pow,
     "min": _min,
     "max": _max,
-    "floor": _floor,
-    "ceil": _ceil,
+    "floor": _one_arg("floor", math.floor),
+    "ceil": _one_arg("ceil", math.ceil),
     "round": _round,
-    "log": _log,
-    "ln": _log,
-    "log10": _log10,
-    "exp": _exp,
+    "log": _log("log", math.log),
+    "ln": _log("ln", math.log),
+    "log10": _log("log10", math.log10),
+    "exp": _one_arg("exp", math.exp),
     "sin": _sin,
     "cos": _cos,
     "tan": _tan,
     "factorial": _factorial,
+}
+
+ARITY: Dict[str, Tuple[int, int]] = {
+    "sqrt": (1, 1),
+    "abs": (1, 1),
+    "pow": (2, 2),
+    "min": (1, 10_000),
+    "max": (1, 10_000),
+    "floor": (1, 1),
+    "ceil": (1, 1),
+    "round": (1, 1),
+    "log": (1, 1),
+    "ln": (1, 1),
+    "log10": (1, 1),
+    "exp": (1, 1),
+    "sin": (1, 1),
+    "cos": (1, 1),
+    "tan": (1, 1),
+    "factorial": (1, 1),
 }
